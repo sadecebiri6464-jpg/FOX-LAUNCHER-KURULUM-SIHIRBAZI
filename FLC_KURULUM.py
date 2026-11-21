@@ -1,7 +1,6 @@
 import importlib.util
 import json
 import os
-import re
 import subprocess
 import sys
 import threading
@@ -25,8 +24,9 @@ class FoxSetupWizard:
     def __init__(self, root):
         self.root = root
         self.root.title("FOXLAUNCHER (FLC) — Gelişmiş Kurulum Sihirbazı")
-        self.root.geometry("700x560")
-        self.root.resizable(False, False)
+        self.root.geometry("720x620")
+        self.root.minsize(680, 560)
+        self.root.resizable(True, True)
 
         self.bg_main = "#0f131a"
         self.bg_card = "#171c26"
@@ -101,14 +101,14 @@ class FoxSetupWizard:
 
     def _build_ui(self):
         # Üst Başlık ve Adım Göstergesi
-        header = tk.Frame(self.root, bg=self.bg_card, padx=22, pady=14)
+        header = tk.Frame(self.root, bg=self.bg_card, padx=20, pady=12)
         header.pack(fill="x")
 
         title_row = tk.Frame(header, bg=self.bg_card)
         title_row.pack(fill="x")
 
         tk.Label(
-            title_row, text="FOXLAUNCHER (FLC)", font=("Segoe UI", 16, "bold"),
+            title_row, text="FOXLAUNCHER (FLC)", font=("Segoe UI", 15, "bold"),
             fg=self.accent_fox, bg=self.bg_card
         ).pack(side="left")
 
@@ -120,11 +120,11 @@ class FoxSetupWizard:
 
         tk.Label(
             header, text="Bildirim, otomatik güncelleme, başlangıç ve oyun tercihlerini yapılandır",
-            font=("Segoe UI", 9), fg=self.text_muted, bg=self.bg_card
-        ).pack(anchor="w", pady=(3, 0))
+            font=("Segoe UI", 8), fg=self.text_muted, bg=self.bg_card
+        ).pack(anchor="w", pady=(2, 0))
 
         # İki Aşamalı Ana Konteyner
-        self.container = tk.Frame(self.root, bg=self.bg_main, padx=20, pady=12)
+        self.container = tk.Frame(self.root, bg=self.bg_main, padx=18, pady=10)
         self.container.pack(fill="both", expand=True)
 
         self.settings_page = tk.Frame(self.container, bg=self.bg_main)
@@ -138,131 +138,12 @@ class FoxSetupWizard:
 
     # --- AŞAMA 1: KURULUM ÖNCESİ AYARLAR SEKMESİ ---
     def _build_settings_page(self):
-        grid = tk.Frame(self.settings_page, bg=self.bg_main)
-        grid.pack(fill="both", expand=True)
-        grid.columnconfigure(0, weight=1)
-        grid.columnconfigure(1, weight=1)
-
-        # SOL KOLON: Güncelleme & Bildirim Ayarları
-        left_card = tk.Frame(grid, bg=self.bg_card, padx=14, pady=12)
-        left_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=(0, 10))
-
-        tk.Label(
-            left_card, text="OTOMATİK GÜNCELLEME & BİLDİRİMLER",
-            font=("Segoe UI", 9, "bold"), fg=self.accent_fox, bg=self.bg_card
-        ).pack(anchor="w", pady=(0, 8))
-
-        self._make_check(
-            left_card, "Açılışta otomatik güncelleme kontrolü yap",
-            self.auto_update_check_var, "İnternet açıksa GitHub deposundan yeni sürümü denetler."
-        )
-        self._make_check(
-            left_card, "Güncelleme varsa Evet / Hayır bildirimi göster",
-            self.auto_update_ask_var, "Kapalıysa sormadan doğrudan güncelleyip yeniden başlatır."
-        )
-        self._make_check(
-            left_card, "Güncelleme ve sistem bildirimlerini aktif et",
-            self.notify_update_var, "Yeni sürüm ve kurulum durumu uyarılarını gösterir."
-        )
-        self._make_check(
-            left_card, "Mod indirme tamamlandığında bildirim ver",
-            self.notify_mod_done_var, "Bağımlılıklarla birlikte kurulum bitince bilgi verir."
-        )
-        self._make_check(
-            left_card, "Oyun başlatıldığında / kapandığında bildirim ver",
-            self.notify_game_state_var, "Minecraft süreci arka planda kapanınca uyarır."
-        )
-
-        # SAĞ KOLON: Başlangıç & Uygulama Ayarları
-        right_card = tk.Frame(grid, bg=self.bg_card, padx=14, pady=12)
-        right_card.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=(0, 10))
-
-        tk.Label(
-            right_card, text="BAŞLANGIÇ & UYGULAMA AYARLARI",
-            font=("Segoe UI", 9, "bold"), fg="#60a5fa", bg=self.bg_card
-        ).pack(anchor="w", pady=(0, 8))
-
-        self._make_check(
-            right_card, "Windows açıldığında FoxLauncher'ı otomatik başlat",
-            self.win_startup_var, "Bilgisayar açılışında arka planda otomatik başlar."
-        )
-        self._make_check(
-            right_card, "Siyah konsol penceresi olmadan başlat (Sessiz Mod)",
-            self.silent_launch_var, "pythonw.exe ile doğrudan arayüz penceresini açar."
-        )
-        self._make_check(
-            right_card, "Masaüstüne hızlı başlatma kısayolu (.bat) ekle",
-            self.create_bat_var, "Tek tıkla başlatma için yardımcı dosya oluşturur."
-        )
-        self._make_check(
-            right_card, "Kurulum tamamlanınca FoxLauncher'ı otomatik aç",
-            self.auto_open_after_var, "Kurulum bittiği an sihirbazı kapatıp uygulamayı başlatır."
-        )
-
-        # ALT KART: Kurulum Konumu & Varsayılan Oyun Ayarları
-        bottom_card = tk.Frame(self.settings_page, bg=self.bg_card, padx=14, pady=12)
-        bottom_card.pack(fill="x", pady=(0, 12))
-        bottom_card.columnconfigure(0, weight=2)
-        bottom_card.columnconfigure(1, weight=1)
-        bottom_card.columnconfigure(2, weight=1)
-
-        tk.Label(
-            bottom_card, text="KURULUM KONUMU & VARSAYILAN OYUN AYARLARI",
-            font=("Segoe UI", 9, "bold"), fg="#34d399", bg=self.bg_card
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
-
-        # Konum satırı
-        path_row = tk.Frame(bottom_card, bg=self.bg_card)
-        path_row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 8))
-
-        tk.Label(path_row, text="Kurulum Klasörü:", font=("Segoe UI", 8, "bold"),
-                 fg=self.text_muted, bg=self.bg_card).pack(side="left", padx=(0, 8))
-
-        path_entry = tk.Entry(
-            path_row, textvariable=self.install_dir_var, bg=self.bg_input, fg="#fdba74",
-            insertbackground=self.text_main, relief="flat", bd=5, font=("Consolas", 8)
-        )
-        path_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        browse_btn = tk.Button(
-            path_row, text="Gözat...", command=self._choose_install_dir,
-            bg=self.bg_input, fg=self.text_main, activebackground="#334155",
-            activeforeground="#ffffff", relief="flat", padx=10, pady=3,
-            font=("Segoe UI", 8, "bold"), cursor="hand2"
-        )
-        browse_btn.pack(side="left")
-
-        # Varsayılan kullanıcı adı, RAM ve Loader
-        tk.Label(bottom_card, text="Varsayılan Oyuncu Adı", font=("Segoe UI", 8),
-                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=0, sticky="w")
-        tk.Label(bottom_card, text="Varsayılan RAM (MB)", font=("Segoe UI", 8),
-                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=1, sticky="w", padx=(10, 0))
-        tk.Label(bottom_card, text="Varsayılan Loader", font=("Segoe UI", 8),
-                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=2, sticky="w", padx=(10, 0))
-
-        tk.Entry(
-            bottom_card, textvariable=self.default_user_var, bg=self.bg_input, fg=self.text_main,
-            insertbackground=self.text_main, relief="flat", bd=5, font=("Segoe UI", 9)
-        ).grid(row=3, column=0, sticky="ew", pady=(3, 0))
-
-        ram_combo = ttk.Combobox(
-            bottom_card, textvariable=self.default_ram_var, state="readonly",
-            values=["2048", "4096", "6144", "8192", "12288"], font=("Segoe UI", 9)
-        )
-        ram_combo.grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=(3, 0))
-
-        loader_combo = ttk.Combobox(
-            bottom_card, textvariable=self.default_loader_var, state="readonly",
-            values=["fabric", "forge", "neoforge", "quilt", "vanilla"], font=("Segoe UI", 9)
-        )
-        loader_combo.grid(row=3, column=2, sticky="ew", padx=(10, 0), pady=(3, 0))
-
-        # İleri Butonu
-        nav_row = tk.Frame(self.settings_page, bg=self.bg_main)
-        nav_row.pack(fill="x")
+        # EN ALTA SABİT SONRAKİ BUTONU (Her zaman görünür)
+        nav_bar = tk.Frame(self.settings_page, bg=self.bg_main)
+        nav_bar.pack(side="bottom", fill="x", pady=(8, 0))
 
         next_btn = tk.Button(
-            nav_row, text="Ayarları Onayla ve Kurulum Aşamasına Geç  →",
+            nav_bar, text="Sonraki: Kurulum Aşamasına Geç  →",
             command=self._go_to_install_stage,
             bg=self.accent_fox, fg="#ffffff", activebackground="#ea580c",
             activeforeground="#ffffff", font=("Segoe UI", 10, "bold"),
@@ -270,9 +151,127 @@ class FoxSetupWizard:
         )
         next_btn.pack(fill="x")
 
+        # ÜST 2 KOLON: Güncelleme/Bildirim + Başlangıç/Uygulama Ayarları
+        grid = tk.Frame(self.settings_page, bg=self.bg_main)
+        grid.pack(fill="both", expand=True)
+        grid.columnconfigure(0, weight=1)
+        grid.columnconfigure(1, weight=1)
+
+        # SOL KOLON
+        left_card = tk.Frame(grid, bg=self.bg_card, padx=12, pady=10)
+        left_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
+
+        tk.Label(
+            left_card, text="OTOMATİK GÜNCELLEME & BİLDİRİMLER",
+            font=("Segoe UI", 8, "bold"), fg=self.accent_fox, bg=self.bg_card
+        ).pack(anchor="w", pady=(0, 6))
+
+        self._make_check(
+            left_card, "Açılışta otomatik güncelleme kontrolü yap",
+            self.auto_update_check_var, "İnternet açıksa GitHub'dan yeni sürümü denetler."
+        )
+        self._make_check(
+            left_card, "Güncelleme varsa Evet / Hayır sor",
+            self.auto_update_ask_var, "Kapalıysa sormadan güncelleyip yeniden başlatır."
+        )
+        self._make_check(
+            left_card, "Güncelleme ve sistem bildirimleri",
+            self.notify_update_var, "Yeni sürüm ve kurulum uyarılarını gösterir."
+        )
+        self._make_check(
+            left_card, "Mod indirme tamamlanınca bildirim ver",
+            self.notify_mod_done_var, "Bağımlılıklarla indirme bitince bilgi verir."
+        )
+        self._make_check(
+            left_card, "Oyun açılınca / kapanınca bildirim ver",
+            self.notify_game_state_var, "Minecraft süreci kapanınca uyarı verir."
+        )
+
+        # SAĞ KOLON
+        right_card = tk.Frame(grid, bg=self.bg_card, padx=12, pady=10)
+        right_card.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 8))
+
+        tk.Label(
+            right_card, text="BAŞLANGIÇ & UYGULAMA AYARLARI",
+            font=("Segoe UI", 8, "bold"), fg="#60a5fa", bg=self.bg_card
+        ).pack(anchor="w", pady=(0, 6))
+
+        self._make_check(
+            right_card, "Windows açıldığında otomatik başlat",
+            self.win_startup_var, "Bilgisayar açılışında arka planda otomatik başlar."
+        )
+        self._make_check(
+            right_card, "Siyah konsol olmadan başlat (Sessiz Mod)",
+            self.silent_launch_var, "pythonw.exe ile doğrudan arayüzü açar."
+        )
+        self._make_check(
+            right_card, "Masaüstüne hızlı başlatma (.bat) ekle",
+            self.create_bat_var, "Tek tıkla başlatma için yardımcı dosya oluşturur."
+        )
+        self._make_check(
+            right_card, "Kurulum bitince FoxLauncher'ı hemen aç",
+            self.auto_open_after_var, "Kurulum tamamlanınca otomatik başlatır."
+        )
+
+        # ALT KART: Kurulum Konumu & Varsayılan Oyun Ayarları
+        bottom_card = tk.Frame(self.settings_page, bg=self.bg_card, padx=12, pady=10)
+        bottom_card.pack(fill="x")
+        bottom_card.columnconfigure(0, weight=2)
+        bottom_card.columnconfigure(1, weight=1)
+        bottom_card.columnconfigure(2, weight=1)
+
+        tk.Label(
+            bottom_card, text="KURULUM KONUMU & VARSAYILAN OYUN AYARLARI",
+            font=("Segoe UI", 8, "bold"), fg="#34d399", bg=self.bg_card
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+
+        path_row = tk.Frame(bottom_card, bg=self.bg_card)
+        path_row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+
+        tk.Label(path_row, text="Konum:", font=("Segoe UI", 8, "bold"),
+                 fg=self.text_muted, bg=self.bg_card).pack(side="left", padx=(0, 6))
+
+        path_entry = tk.Entry(
+            path_row, textvariable=self.install_dir_var, bg=self.bg_input, fg="#fdba74",
+            insertbackground=self.text_main, relief="flat", bd=4, font=("Consolas", 8)
+        )
+        path_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        browse_btn = tk.Button(
+            path_row, text="Gözat...", command=self._choose_install_dir,
+            bg=self.bg_input, fg=self.text_main, activebackground="#334155",
+            activeforeground="#ffffff", relief="flat", padx=10, pady=2,
+            font=("Segoe UI", 8, "bold"), cursor="hand2"
+        )
+        browse_btn.pack(side="left")
+
+        tk.Label(bottom_card, text="Varsayılan Oyuncu Adı", font=("Segoe UI", 8),
+                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=0, sticky="w")
+        tk.Label(bottom_card, text="Varsayılan RAM (MB)", font=("Segoe UI", 8),
+                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=1, sticky="w", padx=(8, 0))
+        tk.Label(bottom_card, text="Varsayılan Loader", font=("Segoe UI", 8),
+                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=2, sticky="w", padx=(8, 0))
+
+        tk.Entry(
+            bottom_card, textvariable=self.default_user_var, bg=self.bg_input, fg=self.text_main,
+            insertbackground=self.text_main, relief="flat", bd=4, font=("Segoe UI", 9)
+        ).grid(row=3, column=0, sticky="ew", pady=(2, 0))
+
+        ram_combo = ttk.Combobox(
+            bottom_card, textvariable=self.default_ram_var, state="readonly",
+            values=["2048", "4096", "6144", "8192", "12288"], font=("Segoe UI", 9)
+        )
+        ram_combo.grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=(2, 0))
+
+        loader_combo = ttk.Combobox(
+            bottom_card, textvariable=self.default_loader_var, state="readonly",
+            values=["fabric", "forge", "neoforge", "quilt", "vanilla"], font=("Segoe UI", 9)
+        )
+        loader_combo.grid(row=3, column=2, sticky="ew", padx=(8, 0), pady=(2, 0))
+
     def _make_check(self, parent, title, var, subtitle):
         box = tk.Frame(parent, bg=self.bg_card)
-        box.pack(fill="x", pady=(0, 7))
+        box.pack(fill="x", pady=(0, 4))
         cb = tk.Checkbutton(
             box, text=title, variable=var, bg=self.bg_card, fg=self.text_main,
             selectcolor=self.bg_input, activebackground=self.bg_card,
@@ -315,46 +314,9 @@ class FoxSetupWizard:
 
     # --- AŞAMA 2: KURULUM EKRANI ---
     def _build_install_page(self):
-        info_box = tk.Frame(self.install_page, bg=self.bg_card, padx=14, pady=12)
-        info_box.pack(fill="x", pady=(0, 12))
-
-        tk.Label(
-            info_box, text="Kurulum Hedefi:", font=("Segoe UI", 8, "bold"),
-            fg=self.text_muted, bg=self.bg_card
-        ).pack(anchor="w")
-
-        self.launcher_py_path = os.path.join(self.desktop_dir, "FoxLauncher.py")
-        self.target_summary_label = tk.Label(
-            info_box, text=self.launcher_py_path, font=("Consolas", 9, "bold"),
-            fg="#fdba74", bg=self.bg_card
-        )
-        self.target_summary_label.pack(anchor="w", pady=(2, 6))
-
-        self.chosen_settings_label = tk.Label(
-            info_box, text="", font=("Segoe UI", 8, "bold"),
-            fg="#93c5fd", bg=self.bg_card, wraplength=620, justify="left"
-        )
-        self.chosen_settings_label.pack(anchor="w")
-
-        self.step_label = tk.Label(
-            self.install_page, text="Seçtiğin ayarlarla kuruluma başlamak için 'Kurulumu Başlat' butonuna bas.",
-            font=("Segoe UI", 9, "bold"), fg=self.text_main, bg=self.bg_main
-        )
-        self.step_label.pack(anchor="w", pady=(0, 6))
-
-        self.progress = ttk.Progressbar(
-            self.install_page, style="Fox.Horizontal.TProgressbar", mode="determinate", maximum=100
-        )
-        self.progress.pack(fill="x", pady=(0, 12))
-
-        self.log_box = tk.Text(
-            self.install_page, height=11, bg="#090c10", fg="#d1d5db", font=("Consolas", 8),
-            relief="flat", bd=8, state="disabled", wrap="word"
-        )
-        self.log_box.pack(fill="both", expand=True, pady=(0, 12))
-
+        # EN ALTA SABİT BUTON ÇUBUĞU
         btn_row = tk.Frame(self.install_page, bg=self.bg_main)
-        btn_row.pack(fill="x")
+        btn_row.pack(side="bottom", fill="x", pady=(8, 0))
 
         self.back_btn = tk.Button(
             btn_row, text="← Ayarlara Dön", command=self._go_back_to_settings,
@@ -379,6 +341,44 @@ class FoxSetupWizard:
             relief="flat", padx=18, pady=9, cursor="hand2", state="disabled"
         )
         self.launch_now_btn.pack(side="left", fill="x", expand=True, padx=(10, 0))
+
+        info_box = tk.Frame(self.install_page, bg=self.bg_card, padx=14, pady=10)
+        info_box.pack(fill="x", pady=(0, 10))
+
+        tk.Label(
+            info_box, text="Kurulum Hedefi:", font=("Segoe UI", 8, "bold"),
+            fg=self.text_muted, bg=self.bg_card
+        ).pack(anchor="w")
+
+        self.launcher_py_path = os.path.join(self.desktop_dir, "FoxLauncher.py")
+        self.target_summary_label = tk.Label(
+            info_box, text=self.launcher_py_path, font=("Consolas", 9, "bold"),
+            fg="#fdba74", bg=self.bg_card
+        )
+        self.target_summary_label.pack(anchor="w", pady=(2, 4))
+
+        self.chosen_settings_label = tk.Label(
+            info_box, text="", font=("Segoe UI", 8, "bold"),
+            fg="#93c5fd", bg=self.bg_card, wraplength=640, justify="left"
+        )
+        self.chosen_settings_label.pack(anchor="w")
+
+        self.step_label = tk.Label(
+            self.install_page, text="Seçtiğin ayarlarla kuruluma başlamak için 'Kurulumu Başlat' butonuna bas.",
+            font=("Segoe UI", 9, "bold"), fg=self.text_main, bg=self.bg_main
+        )
+        self.step_label.pack(anchor="w", pady=(0, 6))
+
+        self.progress = ttk.Progressbar(
+            self.install_page, style="Fox.Horizontal.TProgressbar", mode="determinate", maximum=100
+        )
+        self.progress.pack(fill="x", pady=(0, 10))
+
+        self.log_box = tk.Text(
+            self.install_page, height=10, bg="#090c10", fg="#d1d5db", font=("Consolas", 8),
+            relief="flat", bd=8, state="disabled", wrap="word"
+        )
+        self.log_box.pack(fill="both", expand=True)
 
     def log(self, text):
         def _append():
