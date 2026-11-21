@@ -24,9 +24,20 @@ class FoxSetupWizard:
     def __init__(self, root):
         self.root = root
         self.root.title("FOXLAUNCHER (FLC) — Gelişmiş Kurulum Sihirbazı")
-        self.root.geometry("720x620")
-        self.root.minsize(680, 560)
+
+        # Pencereyi geniş ve yüksek yap, ekranın tam ortasında aç
+        win_w, win_h = 860, 720
+        screen_w = self.root.winfo_screenwidth()
+        screen_h = self.root.winfo_screenheight()
+        win_w = min(win_w, max(760, screen_w - 80))
+        win_h = min(win_h, max(640, screen_h - 80))
+        pos_x = max(0, (screen_w - win_w) // 2)
+        pos_y = max(0, (screen_h - win_h) // 2)
+
+        self.root.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        self.root.minsize(740, 620)
         self.root.resizable(True, True)
+        self.is_fullscreen = False
 
         self.bg_main = "#0f131a"
         self.bg_card = "#171c26"
@@ -63,6 +74,20 @@ class FoxSetupWizard:
         self._setup_styles()
         self._build_ui()
 
+        self.root.bind("<F11>", lambda e: self.toggle_fullscreen())
+        self.root.bind("<Escape>", lambda e: self.exit_fullscreen())
+
+    def toggle_fullscreen(self):
+        self.is_fullscreen = not self.is_fullscreen
+        self.root.attributes("-fullscreen", self.is_fullscreen)
+        self.fs_btn.config(text="Pencere Modu (F11)" if self.is_fullscreen else "Tam Ekran (F11)")
+
+    def exit_fullscreen(self):
+        if self.is_fullscreen:
+            self.is_fullscreen = False
+            self.root.attributes("-fullscreen", False)
+            self.fs_btn.config(text="Tam Ekran (F11)")
+
     def _get_desktop_path(self):
         userprofile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
         onedrive_desktop = os.path.join(userprofile, "OneDrive", "Desktop")
@@ -94,38 +119,90 @@ class FoxSetupWizard:
             bordercolor=self.bg_input,
             lightcolor=self.accent_fox,
             darkcolor=self.accent_fox,
-            thickness=14,
+            thickness=15,
         )
         style.configure("TCombobox", fieldbackground=self.bg_input, background=self.bg_input,
                         foreground=self.text_main, arrowcolor=self.accent_fox, borderwidth=0)
 
     def _build_ui(self):
-        # Üst Başlık ve Adım Göstergesi
-        header = tk.Frame(self.root, bg=self.bg_card, padx=20, pady=12)
-        header.pack(fill="x")
+        # 1. ÜST BAŞLIK ÇUBUĞU (Sabit Üst)
+        header = tk.Frame(self.root, bg=self.bg_card, padx=22, pady=12)
+        header.pack(side="top", fill="x")
 
         title_row = tk.Frame(header, bg=self.bg_card)
         title_row.pack(fill="x")
 
         tk.Label(
-            title_row, text="FOXLAUNCHER (FLC)", font=("Segoe UI", 15, "bold"),
+            title_row, text="FOXLAUNCHER (FLC)", font=("Segoe UI", 16, "bold"),
             fg=self.accent_fox, bg=self.bg_card
         ).pack(side="left")
 
+        self.fs_btn = tk.Button(
+            title_row, text="Tam Ekran (F11)", command=self.toggle_fullscreen,
+            bg=self.bg_input, fg=self.text_main, activebackground="#334155",
+            activeforeground="#ffffff", font=("Segoe UI", 8, "bold"),
+            relief="flat", padx=12, pady=4, cursor="hand2"
+        )
+        self.fs_btn.pack(side="right", padx=(10, 0))
+
         self.stage_badge = tk.Label(
             title_row, text="AŞAMA 1 / 2 — Kurulum Öncesi Ayarlar",
-            font=("Segoe UI", 9, "bold"), fg="#fed7aa", bg="#431407", padx=10, pady=3
+            font=("Segoe UI", 9, "bold"), fg="#fed7aa", bg="#431407", padx=12, pady=4
         )
         self.stage_badge.pack(side="right")
 
         tk.Label(
             header, text="Bildirim, otomatik güncelleme, başlangıç ve oyun tercihlerini yapılandır",
-            font=("Segoe UI", 8), fg=self.text_muted, bg=self.bg_card
-        ).pack(anchor="w", pady=(2, 0))
+            font=("Segoe UI", 9), fg=self.text_muted, bg=self.bg_card
+        ).pack(anchor="w", pady=(3, 0))
 
-        # İki Aşamalı Ana Konteyner
-        self.container = tk.Frame(self.root, bg=self.bg_main, padx=18, pady=10)
-        self.container.pack(fill="both", expand=True)
+        # 2. ALT NAVİGASYON ÇUBUĞU (Doğrudan root'un en altına sabit — ASLA KAYBOLMAZ)
+        self.bottom_nav = tk.Frame(self.root, bg=self.bg_card, padx=22, pady=12)
+        self.bottom_nav.pack(side="bottom", fill="x")
+
+        # Aşama 1 Alt Butonu
+        self.stage1_nav_frame = tk.Frame(self.bottom_nav, bg=self.bg_card)
+        self.stage1_nav_frame.pack(fill="x")
+
+        self.next_btn = tk.Button(
+            self.stage1_nav_frame, text="Sonraki: Kurulum Aşamasına Geç  →",
+            command=self._go_to_install_stage,
+            bg=self.accent_fox, fg="#ffffff", activebackground="#ea580c",
+            activeforeground="#ffffff", font=("Segoe UI", 11, "bold"),
+            relief="flat", padx=22, pady=11, cursor="hand2"
+        )
+        self.next_btn.pack(fill="x")
+
+        # Aşama 2 Alt Butonları
+        self.stage2_nav_frame = tk.Frame(self.bottom_nav, bg=self.bg_card)
+
+        self.back_btn = tk.Button(
+            self.stage2_nav_frame, text="← Ayarlara Dön", command=self._go_back_to_settings,
+            bg=self.bg_input, fg=self.text_main, activebackground="#334155",
+            activeforeground="#ffffff", font=("Segoe UI", 10, "bold"),
+            relief="flat", padx=16, pady=10, cursor="hand2"
+        )
+        self.back_btn.pack(side="left", padx=(0, 10))
+
+        self.start_btn = tk.Button(
+            self.stage2_nav_frame, text="Kurulumu Başlat", command=self.start_install,
+            bg=self.accent_fox, fg="#ffffff", activebackground="#ea580c",
+            activeforeground="#ffffff", font=("Segoe UI", 11, "bold"),
+            relief="flat", padx=20, pady=10, cursor="hand2"
+        )
+        self.start_btn.pack(side="left", fill="x", expand=True)
+
+        self.launch_now_btn = tk.Button(
+            self.stage2_nav_frame, text="FoxLauncher.py'yi Şimdi Aç", command=self.launch_installed_app,
+            bg=self.accent_green, fg="#ffffff", activebackground="#15803d",
+            activeforeground="#ffffff", font=("Segoe UI", 11, "bold"),
+            relief="flat", padx=20, pady=10, cursor="hand2", state="disabled"
+        )
+        self.launch_now_btn.pack(side="left", fill="x", expand=True, padx=(10, 0))
+
+        # 3. ORTA İÇERİK ALANI
+        self.container = tk.Frame(self.root, bg=self.bg_main, padx=20, pady=12)
+        self.container.pack(side="top", fill="both", expand=True)
 
         self.settings_page = tk.Frame(self.container, bg=self.bg_main)
         self.install_page = tk.Frame(self.container, bg=self.bg_main)
@@ -133,38 +210,24 @@ class FoxSetupWizard:
         self._build_settings_page()
         self._build_install_page()
 
-        # İlk olarak Kurulum Öncesi Ayarlar ekranını göster
         self.settings_page.pack(fill="both", expand=True)
 
     # --- AŞAMA 1: KURULUM ÖNCESİ AYARLAR SEKMESİ ---
     def _build_settings_page(self):
-        # EN ALTA SABİT SONRAKİ BUTONU (Her zaman görünür)
-        nav_bar = tk.Frame(self.settings_page, bg=self.bg_main)
-        nav_bar.pack(side="bottom", fill="x", pady=(8, 0))
-
-        next_btn = tk.Button(
-            nav_bar, text="Sonraki: Kurulum Aşamasına Geç  →",
-            command=self._go_to_install_stage,
-            bg=self.accent_fox, fg="#ffffff", activebackground="#ea580c",
-            activeforeground="#ffffff", font=("Segoe UI", 10, "bold"),
-            relief="flat", padx=20, pady=10, cursor="hand2"
-        )
-        next_btn.pack(fill="x")
-
-        # ÜST 2 KOLON: Güncelleme/Bildirim + Başlangıç/Uygulama Ayarları
         grid = tk.Frame(self.settings_page, bg=self.bg_main)
         grid.pack(fill="both", expand=True)
         grid.columnconfigure(0, weight=1)
         grid.columnconfigure(1, weight=1)
+        grid.rowconfigure(0, weight=1)
 
         # SOL KOLON
-        left_card = tk.Frame(grid, bg=self.bg_card, padx=12, pady=10)
-        left_card.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 8))
+        left_card = tk.Frame(grid, bg=self.bg_card, padx=14, pady=12)
+        left_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=(0, 10))
 
         tk.Label(
             left_card, text="OTOMATİK GÜNCELLEME & BİLDİRİMLER",
-            font=("Segoe UI", 8, "bold"), fg=self.accent_fox, bg=self.bg_card
-        ).pack(anchor="w", pady=(0, 6))
+            font=("Segoe UI", 9, "bold"), fg=self.accent_fox, bg=self.bg_card
+        ).pack(anchor="w", pady=(0, 8))
 
         self._make_check(
             left_card, "Açılışta otomatik güncelleme kontrolü yap",
@@ -188,13 +251,13 @@ class FoxSetupWizard:
         )
 
         # SAĞ KOLON
-        right_card = tk.Frame(grid, bg=self.bg_card, padx=12, pady=10)
-        right_card.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 8))
+        right_card = tk.Frame(grid, bg=self.bg_card, padx=14, pady=12)
+        right_card.grid(row=0, column=1, sticky="nsew", padx=(8, 0), pady=(0, 10))
 
         tk.Label(
             right_card, text="BAŞLANGIÇ & UYGULAMA AYARLARI",
-            font=("Segoe UI", 8, "bold"), fg="#60a5fa", bg=self.bg_card
-        ).pack(anchor="w", pady=(0, 6))
+            font=("Segoe UI", 9, "bold"), fg="#60a5fa", bg=self.bg_card
+        ).pack(anchor="w", pady=(0, 8))
 
         self._make_check(
             right_card, "Windows açıldığında otomatik başlat",
@@ -214,7 +277,7 @@ class FoxSetupWizard:
         )
 
         # ALT KART: Kurulum Konumu & Varsayılan Oyun Ayarları
-        bottom_card = tk.Frame(self.settings_page, bg=self.bg_card, padx=12, pady=10)
+        bottom_card = tk.Frame(self.settings_page, bg=self.bg_card, padx=14, pady=12)
         bottom_card.pack(fill="x")
         bottom_card.columnconfigure(0, weight=2)
         bottom_card.columnconfigure(1, weight=1)
@@ -222,25 +285,25 @@ class FoxSetupWizard:
 
         tk.Label(
             bottom_card, text="KURULUM KONUMU & VARSAYILAN OYUN AYARLARI",
-            font=("Segoe UI", 8, "bold"), fg="#34d399", bg=self.bg_card
-        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 6))
+            font=("Segoe UI", 9, "bold"), fg="#34d399", bg=self.bg_card
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
         path_row = tk.Frame(bottom_card, bg=self.bg_card)
-        path_row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 6))
+        path_row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 8))
 
         tk.Label(path_row, text="Konum:", font=("Segoe UI", 8, "bold"),
-                 fg=self.text_muted, bg=self.bg_card).pack(side="left", padx=(0, 6))
+                 fg=self.text_muted, bg=self.bg_card).pack(side="left", padx=(0, 8))
 
         path_entry = tk.Entry(
             path_row, textvariable=self.install_dir_var, bg=self.bg_input, fg="#fdba74",
-            insertbackground=self.text_main, relief="flat", bd=4, font=("Consolas", 8)
+            insertbackground=self.text_main, relief="flat", bd=5, font=("Consolas", 9)
         )
-        path_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        path_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         browse_btn = tk.Button(
             path_row, text="Gözat...", command=self._choose_install_dir,
             bg=self.bg_input, fg=self.text_main, activebackground="#334155",
-            activeforeground="#ffffff", relief="flat", padx=10, pady=2,
+            activeforeground="#ffffff", relief="flat", padx=12, pady=4,
             font=("Segoe UI", 8, "bold"), cursor="hand2"
         )
         browse_btn.pack(side="left")
@@ -248,41 +311,41 @@ class FoxSetupWizard:
         tk.Label(bottom_card, text="Varsayılan Oyuncu Adı", font=("Segoe UI", 8),
                  fg=self.text_muted, bg=self.bg_card).grid(row=2, column=0, sticky="w")
         tk.Label(bottom_card, text="Varsayılan RAM (MB)", font=("Segoe UI", 8),
-                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=1, sticky="w", padx=(8, 0))
+                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=1, sticky="w", padx=(10, 0))
         tk.Label(bottom_card, text="Varsayılan Loader", font=("Segoe UI", 8),
-                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=2, sticky="w", padx=(8, 0))
+                 fg=self.text_muted, bg=self.bg_card).grid(row=2, column=2, sticky="w", padx=(10, 0))
 
         tk.Entry(
             bottom_card, textvariable=self.default_user_var, bg=self.bg_input, fg=self.text_main,
-            insertbackground=self.text_main, relief="flat", bd=4, font=("Segoe UI", 9)
-        ).grid(row=3, column=0, sticky="ew", pady=(2, 0))
+            insertbackground=self.text_main, relief="flat", bd=5, font=("Segoe UI", 9)
+        ).grid(row=3, column=0, sticky="ew", pady=(3, 0))
 
         ram_combo = ttk.Combobox(
             bottom_card, textvariable=self.default_ram_var, state="readonly",
             values=["2048", "4096", "6144", "8192", "12288"], font=("Segoe UI", 9)
         )
-        ram_combo.grid(row=3, column=1, sticky="ew", padx=(8, 0), pady=(2, 0))
+        ram_combo.grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=(3, 0))
 
         loader_combo = ttk.Combobox(
             bottom_card, textvariable=self.default_loader_var, state="readonly",
             values=["fabric", "forge", "neoforge", "quilt", "vanilla"], font=("Segoe UI", 9)
         )
-        loader_combo.grid(row=3, column=2, sticky="ew", padx=(8, 0), pady=(2, 0))
+        loader_combo.grid(row=3, column=2, sticky="ew", padx=(10, 0), pady=(3, 0))
 
     def _make_check(self, parent, title, var, subtitle):
         box = tk.Frame(parent, bg=self.bg_card)
-        box.pack(fill="x", pady=(0, 4))
+        box.pack(fill="x", pady=(0, 6))
         cb = tk.Checkbutton(
             box, text=title, variable=var, bg=self.bg_card, fg=self.text_main,
             selectcolor=self.bg_input, activebackground=self.bg_card,
-            activeforeground=self.text_main, font=("Segoe UI", 8, "bold"),
+            activeforeground=self.text_main, font=("Segoe UI", 9, "bold"),
             anchor="w", cursor="hand2"
         )
         cb.pack(fill="x")
         tk.Label(
             box, text=subtitle, font=("Segoe UI", 7), fg=self.text_muted,
             bg=self.bg_card, anchor="w", justify="left"
-        ).pack(fill="x", padx=(22, 0))
+        ).pack(fill="x", padx=(24, 0))
 
     def _choose_install_dir(self):
         chosen = filedialog.askdirectory(title="FoxLauncher.py Kurulum Klasörünü Seç")
@@ -304,46 +367,24 @@ class FoxSetupWizard:
         self.chosen_settings_label.config(text=" • ".join(summary_items))
 
         self.settings_page.pack_forget()
+        self.stage1_nav_frame.pack_forget()
+
         self.install_page.pack(fill="both", expand=True)
+        self.stage2_nav_frame.pack(fill="x")
         self.stage_badge.config(text="AŞAMA 2 / 2 — Kurulum & Doğrulama", bg="#1e3a8a", fg="#bfdbfe")
 
     def _go_back_to_settings(self):
         self.install_page.pack_forget()
+        self.stage2_nav_frame.pack_forget()
+
         self.settings_page.pack(fill="both", expand=True)
+        self.stage1_nav_frame.pack(fill="x")
         self.stage_badge.config(text="AŞAMA 1 / 2 — Kurulum Öncesi Ayarlar", bg="#431407", fg="#fed7aa")
 
     # --- AŞAMA 2: KURULUM EKRANI ---
     def _build_install_page(self):
-        # EN ALTA SABİT BUTON ÇUBUĞU
-        btn_row = tk.Frame(self.install_page, bg=self.bg_main)
-        btn_row.pack(side="bottom", fill="x", pady=(8, 0))
-
-        self.back_btn = tk.Button(
-            btn_row, text="← Ayarlara Dön", command=self._go_back_to_settings,
-            bg=self.bg_input, fg=self.text_main, activebackground="#334155",
-            activeforeground="#ffffff", font=("Segoe UI", 9, "bold"),
-            relief="flat", padx=14, pady=9, cursor="hand2"
-        )
-        self.back_btn.pack(side="left", padx=(0, 10))
-
-        self.start_btn = tk.Button(
-            btn_row, text="Kurulumu Başlat", command=self.start_install,
-            bg=self.accent_fox, fg="#ffffff", activebackground="#ea580c",
-            activeforeground="#ffffff", font=("Segoe UI", 10, "bold"),
-            relief="flat", padx=18, pady=9, cursor="hand2"
-        )
-        self.start_btn.pack(side="left", fill="x", expand=True)
-
-        self.launch_now_btn = tk.Button(
-            btn_row, text="FoxLauncher.py'yi Şimdi Aç", command=self.launch_installed_app,
-            bg=self.accent_green, fg="#ffffff", activebackground="#15803d",
-            activeforeground="#ffffff", font=("Segoe UI", 10, "bold"),
-            relief="flat", padx=18, pady=9, cursor="hand2", state="disabled"
-        )
-        self.launch_now_btn.pack(side="left", fill="x", expand=True, padx=(10, 0))
-
-        info_box = tk.Frame(self.install_page, bg=self.bg_card, padx=14, pady=10)
-        info_box.pack(fill="x", pady=(0, 10))
+        info_box = tk.Frame(self.install_page, bg=self.bg_card, padx=16, pady=12)
+        info_box.pack(fill="x", pady=(0, 12))
 
         tk.Label(
             info_box, text="Kurulum Hedefi:", font=("Segoe UI", 8, "bold"),
@@ -352,19 +393,19 @@ class FoxSetupWizard:
 
         self.launcher_py_path = os.path.join(self.desktop_dir, "FoxLauncher.py")
         self.target_summary_label = tk.Label(
-            info_box, text=self.launcher_py_path, font=("Consolas", 9, "bold"),
+            info_box, text=self.launcher_py_path, font=("Consolas", 10, "bold"),
             fg="#fdba74", bg=self.bg_card
         )
-        self.target_summary_label.pack(anchor="w", pady=(2, 4))
+        self.target_summary_label.pack(anchor="w", pady=(2, 6))
 
         self.chosen_settings_label = tk.Label(
             info_box, text="", font=("Segoe UI", 8, "bold"),
-            fg="#93c5fd", bg=self.bg_card, wraplength=640, justify="left"
+            fg="#93c5fd", bg=self.bg_card, wraplength=760, justify="left"
         )
         self.chosen_settings_label.pack(anchor="w")
 
         self.step_label = tk.Label(
-            self.install_page, text="Seçtiğin ayarlarla kuruluma başlamak için 'Kurulumu Başlat' butonuna bas.",
+            self.install_page, text="Seçtiğin ayarlarla kuruluma başlamak için alttaki 'Kurulumu Başlat' butonuna bas.",
             font=("Segoe UI", 9, "bold"), fg=self.text_main, bg=self.bg_main
         )
         self.step_label.pack(anchor="w", pady=(0, 6))
@@ -372,10 +413,10 @@ class FoxSetupWizard:
         self.progress = ttk.Progressbar(
             self.install_page, style="Fox.Horizontal.TProgressbar", mode="determinate", maximum=100
         )
-        self.progress.pack(fill="x", pady=(0, 10))
+        self.progress.pack(fill="x", pady=(0, 12))
 
         self.log_box = tk.Text(
-            self.install_page, height=10, bg="#090c10", fg="#d1d5db", font=("Consolas", 8),
+            self.install_page, height=12, bg="#090c10", fg="#d1d5db", font=("Consolas", 9),
             relief="flat", bd=8, state="disabled", wrap="word"
         )
         self.log_box.pack(fill="both", expand=True)
@@ -465,7 +506,7 @@ class FoxSetupWizard:
         self.log(f"[AYARLAR] Tercihler kaydedildi: {config_path}")
 
     def _fetch_code_from_github(self):
-        headers = {"User-Agent": "FLC-SetupWizard/2.0"}
+        headers = {"User-Agent": "FLC-SetupWizard/2.1"}
         api_urls = [
             f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/commits/{TARGET_COMMIT}",
             f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/git/trees/main?recursive=1",
@@ -547,72 +588,4 @@ class FoxSetupWizard:
                     )
                     if res.returncode != 0:
                         raise RuntimeError(f"'{pip_name}' kurulamadı:\n{res.stderr}")
-                    self.log(f"[KURULDU] '{pip_name}' başarıyla yüklendi.")
-
-            # AŞAMA 2: GitHub'dan Kod Çekme
-            self.set_step("Adım 2/4: GitHub deposundan en güncel FoxLauncher kodu çekiliyor...", 55)
-            self.log("\n=== ADIM 2: GITHUB KAYNAK KODU İNDİRME ===")
-            launcher_code = self._fetch_code_from_github()
-            self.log(f"[BAŞARILI] Kaynak kod indirildi ({len(launcher_code)} karakter).")
-
-            # AŞAMA 3: FoxLauncher.py Dosyasını Oluşturma
-            self.set_step("Adım 3/4: FoxLauncher.py oluşturuluyor...", 75)
-            self.log("\n=== ADIM 3: DOSYA OLUŞTURMA ===")
-            target_dir = os.path.dirname(self.launcher_py_path)
-            os.makedirs(target_dir, exist_ok=True)
-
-            with open(self.launcher_py_path, "w", encoding="utf-8") as f:
-                f.write(launcher_code)
-            self.log(f"[OLUŞTURULDU] {self.launcher_py_path}")
-
-            if self.create_bat_var.get():
-                bat_path = os.path.join(target_dir, "FoxLauncher_Baslat.bat")
-                py_cmd = "pythonw" if self.silent_launch_var.get() else "python"
-                with open(bat_path, "w", encoding="utf-8") as bf:
-                    bf.write(f'@echo off\nstart "" {py_cmd} "{self.launcher_py_path}"\n')
-                self.log(f"[OLUŞTURULDU] {bat_path}")
-
-            # AŞAMA 4: Bildirim, Güncelleme & Başlangıç Ayarlarını Uygulama
-            self.set_step("Adım 4/4: Bildirim, güncelleme ve başlangıç ayarları uygulanıyor...", 90)
-            self.log("\n=== ADIM 4: TERCHİHLERİ KAYDETME ===")
-            self._write_user_preferences()
-            self._configure_windows_startup(self.win_startup_var.get(), self.launcher_py_path)
-
-            self.set_step("Kurulum ve yapılandırma başarıyla tamamlandı!", 100)
-            self.log("\n=== KURULUM TAMAMLANDI ===")
-
-            self.root.after(0, lambda: (
-                self.start_btn.config(text="Kurulum Tamamlandı ✓"),
-                self.back_btn.config(state="normal"),
-                self.launch_now_btn.config(state="normal")
-            ))
-
-            if self.auto_open_after_var.get():
-                self.root.after(600, self.launch_installed_app)
-
-        except Exception as e:
-            self.log(f"\n[HATA] {e}")
-            self.set_step("Kurulum sırasında hata oluştu.", 0)
-            self.root.after(0, lambda: (
-                messagebox.showerror("Kurulum Hatası", str(e)),
-                self.start_btn.config(state="normal", text="Tekrar Dene"),
-                self.back_btn.config(state="normal")
-            ))
-
-    def launch_installed_app(self):
-        if not os.path.isfile(self.launcher_py_path):
-            messagebox.showerror("Hata", "FoxLauncher.py dosyası bulunamadı.")
-            return
-        python_exe = sys.executable
-        if self.silent_launch_var.get() and sys.platform == "win32" and python_exe.lower().endswith("python.exe"):
-            pythonw = python_exe[:-10] + "pythonw.exe"
-            if os.path.isfile(pythonw):
-                python_exe = pythonw
-        subprocess.Popen([python_exe, self.launcher_py_path], cwd=os.path.dirname(self.launcher_py_path))
-        self.root.destroy()
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = FoxSetupWizard(root)
-    root.mainloop()
+                    self.log(f"[KURULDU] '{pip_name}' başarıyla yüklendi
