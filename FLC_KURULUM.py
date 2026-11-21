@@ -588,4 +588,72 @@ class FoxSetupWizard:
                     )
                     if res.returncode != 0:
                         raise RuntimeError(f"'{pip_name}' kurulamadı:\n{res.stderr}")
-                    self.log(f"[KURULDU] '{pip_name}' başarıyla yüklendi
+                    self.log(f"[KURULDU] '{pip_name}' başarıyla yüklendi.")
+
+            # AŞAMA 2: GitHub'dan Kod Çekme
+            self.set_step("Adım 2/4: GitHub deposundan en güncel FoxLauncher kodu çekiliyor...", 55)
+            self.log("\n=== ADIM 2: GITHUB KAYNAK KODU İNDİRME ===")
+            launcher_code = self._fetch_code_from_github()
+            self.log(f"[BAŞARILI] Kaynak kod indirildi ({len(launcher_code)} karakter).")
+
+            # AŞAMA 3: FoxLauncher.py Dosyasını Oluşturma
+            self.set_step("Adım 3/4: FoxLauncher.py oluşturuluyor...", 75)
+            self.log("\n=== ADIM 3: DOSYA OLUŞTURMA ===")
+            target_dir = os.path.dirname(self.launcher_py_path)
+            os.makedirs(target_dir, exist_ok=True)
+
+            with open(self.launcher_py_path, "w", encoding="utf-8") as f:
+                f.write(launcher_code)
+            self.log(f"[OLUŞTURULDU] {self.launcher_py_path}")
+
+            if self.create_bat_var.get():
+                bat_path = os.path.join(target_dir, "FoxLauncher_Baslat.bat")
+                py_cmd = "pythonw" if self.silent_launch_var.get() else "python"
+                with open(bat_path, "w", encoding="utf-8") as bf:
+                    bf.write(f'@echo off\nstart "" {py_cmd} "{self.launcher_py_path}"\n')
+                self.log(f"[OLUŞTURULDU] {bat_path}")
+
+            # AŞAMA 4: Bildirim, Güncelleme & Başlangıç Ayarlarını Uygulama
+            self.set_step("Adım 4/4: Bildirim, güncelleme ve başlangıç ayarları uygulanıyor...", 90)
+            self.log("\n=== ADIM 4: TERCİHLERİ KAYDETME ===")
+            self._write_user_preferences()
+            self._configure_windows_startup(self.win_startup_var.get(), self.launcher_py_path)
+
+            self.set_step("Kurulum ve yapılandırma başarıyla tamamlandı!", 100)
+            self.log("\n=== KURULUM TAMAMLANDI ===")
+
+            self.root.after(0, lambda: (
+                self.start_btn.config(text="Kurulum Tamamlandı ✓"),
+                self.back_btn.config(state="normal"),
+                self.launch_now_btn.config(state="normal")
+            ))
+
+            if self.auto_open_after_var.get():
+                self.root.after(600, self.launch_installed_app)
+
+        except Exception as e:
+            self.log(f"\n[HATA] {e}")
+            self.set_step("Kurulum sırasında hata oluştu.", 0)
+            self.root.after(0, lambda: (
+                messagebox.showerror("Kurulum Hatası", str(e)),
+                self.start_btn.config(state="normal", text="Tekrar Dene"),
+                self.back_btn.config(state="normal")
+            ))
+
+    def launch_installed_app(self):
+        if not os.path.isfile(self.launcher_py_path):
+            messagebox.showerror("Hata", "FoxLauncher.py dosyası bulunamadı.")
+            return
+        python_exe = sys.executable
+        if self.silent_launch_var.get() and sys.platform == "win32" and python_exe.lower().endswith("python.exe"):
+            pythonw = python_exe[:-10] + "pythonw.exe"
+            if os.path.isfile(pythonw):
+                python_exe = pythonw
+        subprocess.Popen([python_exe, self.launcher_py_path], cwd=os.path.dirname(self.launcher_py_path))
+        self.root.destroy()
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = FoxSetupWizard(root)
+    root.mainloop()
