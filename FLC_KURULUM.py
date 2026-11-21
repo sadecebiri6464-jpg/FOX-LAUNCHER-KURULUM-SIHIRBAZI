@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import struct
 import subprocess
 import sys
 import threading
@@ -20,12 +21,114 @@ REQUIRED_PACKAGES = [
 ]
 
 
+def _point_in_triangle(px, py, ax, ay, bx, by, cx, cy):
+    d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by)
+    d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy)
+    d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay)
+    has_neg = (d1 < 0) or (d2 < 0) or (d3 < 0)
+    has_pos = (d1 > 0) or (d2 > 0) or (d3 > 0)
+    return not (has_neg and has_pos)
+
+
+def _render_fox_rgba_pixels(size):
+    buf = bytearray(size * size * 4)
+    s = float(size)
+    cx = s * 0.5
+
+    def set_px(x, y, r, g, b, a=255):
+        if 0 <= x < size and 0 <= y < size:
+            idx = (y * size + x) * 4
+            buf[idx] = b
+            buf[idx + 1] = g
+            buf[idx + 2] = r
+            buf[idx + 3] = a
+
+    pad = s * 0.05
+    rad = s * 0.24
+    for y in range(size):
+        for x in range(size):
+            px, py = x + 0.5, y + 0.5
+            ix = max(pad + rad, min(s - pad - rad, px))
+            iy = max(pad + rad, min(s - pad - rad, py))
+            dist = ((px - ix) ** 2 + (py - iy) ** 2) ** 0.5
+            if dist <= rad:
+                if dist >= rad - max(1.2, s * 0.045):
+                    set_px(x, y, 249, 115, 22, 255)
+                else:
+                    set_px(x, y, 26, 31, 43, 255)
+
+            in_left_ear = _point_in_triangle(px, py, s * 0.20, s * 0.16, s * 0.43, s * 0.34, s * 0.19, s * 0.49)
+            in_right_ear = _point_in_triangle(px, py, s * 0.80, s * 0.16, s * 0.57, s * 0.34, s * 0.81, s * 0.49)
+            if in_left_ear or in_right_ear:
+                set_px(x, y, 234, 88, 12, 255)
+
+            in_face = (
+                _point_in_triangle(px, py, s * 0.19, s * 0.44, cx, s * 0.31, s * 0.81, s * 0.44)
+                or _point_in_triangle(px, py, s * 0.19, s * 0.44, s * 0.81, s * 0.44, s * 0.74, s * 0.67)
+                or _point_in_triangle(px, py, s * 0.19, s * 0.44, s * 0.74, s * 0.67, s * 0.26, s * 0.67)
+                or _point_in_triangle(px, py, s * 0.26, s * 0.67, s * 0.74, s * 0.67, cx, s * 0.85)
+            )
+            if in_face:
+                set_px(x, y, 249, 115, 22, 255)
+
+            in_l_cheek = (
+                _point_in_triangle(px, py, s * 0.19, s * 0.48, s * 0.43, s * 0.62, cx, s * 0.85)
+                or _point_in_triangle(px, py, s * 0.19, s * 0.48, cx, s * 0.85, s * 0.26, s * 0.67)
+            )
+            in_r_cheek = (
+                _point_in_triangle(px, py, s * 0.81, s * 0.48, s * 0.57, s * 0.62, cx, s * 0.85)
+                or _point_in_triangle(px, py, s * 0.81, s * 0.48, cx, s * 0.85, s * 0.74, s * 0.67)
+            )
+            if in_l_cheek or in_r_cheek:
+                set_px(x, y, 248, 250, 252, 255)
+
+            eye_r = max(1.1, s * 0.042)
+            if ((px - s * 0.36) ** 2 + (py - s * 0.53) ** 2) ** 0.5 <= eye_r:
+                set_px(x, y, 15, 23, 42, 255)
+            if ((px - s * 0.64) ** 2 + (py - s * 0.53) ** 2) ** 0.5 <= eye_r:
+                set_px(x, y, 15, 23, 42, 255)
+
+            if _point_in_triangle(px, py, cx - s * 0.07, s * 0.75, cx + s * 0.07, s * 0.75, cx, s * 0.85):
+                set_px(x, y, 15, 23, 42, 255)
+
+    return bytes(buf)
+
+
+def write_fox_ico_file(ico_path):
+    os.makedirs(os.path.dirname(ico_path), exist_ok=True)
+    sizes = [16, 32, 48, 64, 128]
+    images_data = []
+    for sz in sizes:
+        bgra = _render_fox_rgba_pixels(sz)
+        rows = [bgra[y * sz * 4:(y + 1) * sz * 4] for y in range(sz - 1, -1, -1)]
+        pixel_data = b"".join(rows)
+        and_mask_row_bytes = ((sz + 31) // 32) * 4
+        and_mask = b"\x00" * (and_mask_row_bytes * sz)
+        bih = struct.pack(
+            "<IIIHHIIIIII",
+            40, sz, sz * 2, 1, 32, 0,
+            len(pixel_data) + len(and_mask), 0, 0, 0, 0
+        )
+        images_data.append((sz, bih + pixel_data + and_mask))
+
+    header = struct.pack("<HHH", 0, 1, len(images_data))
+    offset = 6 + 16 * len(images_data)
+    entries = []
+    for sz, blob in images_data:
+        w_byte = 0 if sz >= 256 else sz
+        entries.append(struct.pack("<BBBBHHII", w_byte, w_byte, 0, 0, 1, 32, len(blob), offset))
+        offset += len(blob)
+
+    with open(ico_path, "wb") as f:
+        f.write(header + b"".join(entries) + b"".join(b for _, b in images_data))
+    return ico_path
+
+
 class FoxSetupWizard:
     def __init__(self, root):
         self.root = root
         self.root.title("FOXLAUNCHER (FLC) — Gelişmiş Kurulum Sihirbazı")
 
-        # Pencereyi geniş ve yüksek yap, ekranın tam ortasında aç
         win_w, win_h = 860, 720
         screen_w = self.root.winfo_screenwidth()
         screen_h = self.root.winfo_screenheight()
@@ -51,9 +154,17 @@ class FoxSetupWizard:
 
         self.desktop_dir = self._get_desktop_path()
         self.mc_dir = self._get_minecraft_dir()
+        self.ico_path = os.path.join(self.mc_dir, "flc_fox_v2.ico")
 
-        # Kurulum Öncesi Ayar Değişkenleri
-        self.install_dir_var = tk.StringVar(value=self.desktop_dir)
+        try:
+            write_fox_ico_file(self.ico_path)
+            self.root.iconbitmap(self.ico_path)
+        except Exception:
+            pass
+
+        # Kurulum Öncesi Ayar Değişkenleri (Varsayılan kaynak dosya konumu: .minecraft\flc_app)
+        default_app_dir = os.path.join(self.mc_dir, "flc_app")
+        self.install_dir_var = tk.StringVar(value=default_app_dir)
         self.default_user_var = tk.StringVar(value="Thefoxx20")
         self.default_ram_var = tk.StringVar(value="4096")
         self.default_loader_var = tk.StringVar(value="fabric")
@@ -68,7 +179,6 @@ class FoxSetupWizard:
         # Başlangıç & Uygulama Ayarları
         self.win_startup_var = tk.BooleanVar(value=False)
         self.silent_launch_var = tk.BooleanVar(value=True)
-        self.create_bat_var = tk.BooleanVar(value=False)
         self.auto_open_after_var = tk.BooleanVar(value=False)
 
         self._setup_styles()
@@ -125,7 +235,7 @@ class FoxSetupWizard:
                         foreground=self.text_main, arrowcolor=self.accent_fox, borderwidth=0)
 
     def _build_ui(self):
-        # 1. ÜST BAŞLIK ÇUBUĞU (Sabit Üst)
+        # 1. ÜST BAŞLIK ÇUBUĞU
         header = tk.Frame(self.root, bg=self.bg_card, padx=22, pady=12)
         header.pack(side="top", fill="x")
 
@@ -152,15 +262,14 @@ class FoxSetupWizard:
         self.stage_badge.pack(side="right")
 
         tk.Label(
-            header, text="Bildirim, otomatik güncelleme, başlangıç ve oyun tercihlerini yapılandır",
+            header, text="Bildirim, otomatik güncelleme, başlangıç ve masaüstü 'Fox Launcher' kısayol ayarları",
             font=("Segoe UI", 9), fg=self.text_muted, bg=self.bg_card
         ).pack(anchor="w", pady=(3, 0))
 
-        # 2. ALT NAVİGASYON ÇUBUĞU (Doğrudan root'un en altına sabit — ASLA KAYBOLMAZ)
+        # 2. ALT NAVİGASYON ÇUBUĞU
         self.bottom_nav = tk.Frame(self.root, bg=self.bg_card, padx=22, pady=12)
         self.bottom_nav.pack(side="bottom", fill="x")
 
-        # Aşama 1 Alt Butonu
         self.stage1_nav_frame = tk.Frame(self.bottom_nav, bg=self.bg_card)
         self.stage1_nav_frame.pack(fill="x")
 
@@ -173,7 +282,6 @@ class FoxSetupWizard:
         )
         self.next_btn.pack(fill="x")
 
-        # Aşama 2 Alt Butonları
         self.stage2_nav_frame = tk.Frame(self.bottom_nav, bg=self.bg_card)
 
         self.back_btn = tk.Button(
@@ -193,7 +301,7 @@ class FoxSetupWizard:
         self.start_btn.pack(side="left", fill="x", expand=True)
 
         self.launch_now_btn = tk.Button(
-            self.stage2_nav_frame, text="FoxLauncher.py'yi Şimdi Aç", command=self.launch_installed_app,
+            self.stage2_nav_frame, text="Fox Launcher'ı Şimdi Aç", command=self.launch_installed_app,
             bg=self.accent_green, fg="#ffffff", activebackground="#15803d",
             activeforeground="#ffffff", font=("Segoe UI", 11, "bold"),
             relief="flat", padx=20, pady=10, cursor="hand2", state="disabled"
@@ -268,13 +376,22 @@ class FoxSetupWizard:
             self.silent_launch_var, "pythonw.exe ile doğrudan arayüzü açar."
         )
         self._make_check(
-            right_card, "Masaüstüne hızlı başlatma (.bat) ekle",
-            self.create_bat_var, "Tek tıkla başlatma için yardımcı dosya oluşturur."
-        )
-        self._make_check(
-            right_card, "Kurulum bitince FoxLauncher'ı hemen aç",
+            right_card, "Kurulum bitince Fox Launcher'ı hemen aç",
             self.auto_open_after_var, "Kurulum tamamlanınca otomatik başlatır."
         )
+
+        # Masaüstü Kısayol Bilgi Kutusu (Zorunlu ve Kalıcı)
+        shortcut_info = tk.Frame(right_card, bg="#11161f", padx=10, pady=8)
+        shortcut_info.pack(fill="x", pady=(8, 0))
+        tk.Label(
+            shortcut_info, text="✓ Masaüstü Simgesi: Fox Launcher (Tilki Logolu)",
+            font=("Segoe UI", 8, "bold"), fg="#4ade80", bg="#11161f", anchor="w"
+        ).pack(fill="x")
+        tk.Label(
+            shortcut_info,
+            text="Masaüstüne .bat değil, tilki ikonlu 'Fox Launcher' uygulama kısayolu otomatik eklenir.",
+            font=("Segoe UI", 7), fg=self.text_muted, bg="#11161f", anchor="w", justify="left", wraplength=330
+        ).pack(fill="x", pady=(2, 0))
 
         # ALT KART: Kurulum Konumu & Varsayılan Oyun Ayarları
         bottom_card = tk.Frame(self.settings_page, bg=self.bg_card, padx=14, pady=12)
@@ -284,14 +401,14 @@ class FoxSetupWizard:
         bottom_card.columnconfigure(2, weight=1)
 
         tk.Label(
-            bottom_card, text="KURULUM KONUMU & VARSAYILAN OYUN AYARLARI",
+            bottom_card, text="PROGRAM DOSYA KONUMU & VARSAYILAN OYUN AYARLARI",
             font=("Segoe UI", 9, "bold"), fg="#34d399", bg=self.bg_card
         ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
 
         path_row = tk.Frame(bottom_card, bg=self.bg_card)
         path_row.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(0, 8))
 
-        tk.Label(path_row, text="Konum:", font=("Segoe UI", 8, "bold"),
+        tk.Label(path_row, text="Kaynak Konum:", font=("Segoe UI", 8, "bold"),
                  fg=self.text_muted, bg=self.bg_card).pack(side="left", padx=(0, 8))
 
         path_entry = tk.Entry(
@@ -348,14 +465,17 @@ class FoxSetupWizard:
         ).pack(fill="x", padx=(24, 0))
 
     def _choose_install_dir(self):
-        chosen = filedialog.askdirectory(title="FoxLauncher.py Kurulum Klasörünü Seç")
+        chosen = filedialog.askdirectory(title="FoxLauncher.py Klasörünü Seç")
         if chosen:
             self.install_dir_var.set(chosen)
 
     def _go_to_install_stage(self):
-        target_dir = self.install_dir_var.get().strip() or self.desktop_dir
+        target_dir = self.install_dir_var.get().strip() or os.path.join(self.mc_dir, "flc_app")
         self.launcher_py_path = os.path.join(target_dir, "FoxLauncher.py")
-        self.target_summary_label.config(text=self.launcher_py_path)
+        self.desktop_shortcut_path = os.path.join(self.desktop_dir, "Fox Launcher.lnk")
+        self.target_summary_label.config(
+            text=f"Masaüstü Simgesi: {self.desktop_shortcut_path}\nProgram Dosyası: {self.launcher_py_path}"
+        )
 
         summary_items = [
             f"Otomatik Güncelleme: {'Açık' if self.auto_update_check_var.get() else 'Kapalı'}",
@@ -387,14 +507,16 @@ class FoxSetupWizard:
         info_box.pack(fill="x", pady=(0, 12))
 
         tk.Label(
-            info_box, text="Kurulum Hedefi:", font=("Segoe UI", 8, "bold"),
+            info_box, text="Kurulum Hedefleri:", font=("Segoe UI", 8, "bold"),
             fg=self.text_muted, bg=self.bg_card
         ).pack(anchor="w")
 
-        self.launcher_py_path = os.path.join(self.desktop_dir, "FoxLauncher.py")
+        self.launcher_py_path = os.path.join(self.mc_dir, "flc_app", "FoxLauncher.py")
+        self.desktop_shortcut_path = os.path.join(self.desktop_dir, "Fox Launcher.lnk")
         self.target_summary_label = tk.Label(
-            info_box, text=self.launcher_py_path, font=("Consolas", 10, "bold"),
-            fg="#fdba74", bg=self.bg_card
+            info_box,
+            text=f"Masaüstü Simgesi: {self.desktop_shortcut_path}\nProgram Dosyası: {self.launcher_py_path}",
+            font=("Consolas", 9, "bold"), fg="#fdba74", bg=self.bg_card, justify="left"
         )
         self.target_summary_label.pack(anchor="w", pady=(2, 6))
 
@@ -443,6 +565,56 @@ class FoxSetupWizard:
     def _is_package_installed(self, import_name):
         return importlib.util.find_spec(import_name) is not None
 
+    def _get_python_executable(self):
+        py_exe = sys.executable
+        if self.silent_launch_var.get() and sys.platform == "win32" and py_exe.lower().endswith("python.exe"):
+            pyw = py_exe[:-10] + "pythonw.exe"
+            if os.path.isfile(pyw):
+                return pyw
+        return py_exe
+
+    def _create_desktop_fox_shortcut(self):
+        """Masaüstüne .bat değil, tilki ikonlu gerçek 'Fox Launcher' (.lnk) kısayolu oluşturur."""
+        write_fox_ico_file(self.ico_path)
+        os.makedirs(self.desktop_dir, exist_ok=True)
+
+        # Varsa eski .bat dosyasını temizle
+        old_bat = os.path.join(self.desktop_dir, "FoxLauncher_Baslat.bat")
+        if os.path.isfile(old_bat):
+            try:
+                os.remove(old_bat)
+            except Exception:
+                pass
+
+        if sys.platform != "win32":
+            return
+
+        py_exe = self._get_python_executable()
+        shortcut_path = os.path.join(self.desktop_dir, "Fox Launcher.lnk")
+        work_dir = os.path.dirname(self.launcher_py_path)
+
+        ps_script = (
+            "$ws = New-Object -ComObject WScript.Shell; "
+            f"$sc = $ws.CreateShortcut('{shortcut_path}'); "
+            f"$sc.TargetPath = '{py_exe}'; "
+            f"$sc.Arguments = '\"{self.launcher_py_path}\"'; "
+            f"$sc.WorkingDirectory = '{work_dir}'; "
+            f"$sc.IconLocation = '{self.ico_path},0'; "
+            "$sc.Description = 'FOXLAUNCHER (FLC) Minecraft Başlatıcı'; "
+            "$sc.Save()"
+        )
+
+        res = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if res.returncode != 0 or not os.path.isfile(shortcut_path):
+            raise RuntimeError(f"Masaüstü kısayolu oluşturulamadı:\n{res.stderr}")
+
+        self.log(f"[MASAÜSTÜ] Tilki ikonlu 'Fox Launcher' kısayolu oluşturuldu: {shortcut_path}")
+
     def _configure_windows_startup(self, enable, target_script):
         if sys.platform != "win32":
             return
@@ -451,11 +623,7 @@ class FoxSetupWizard:
             key_path = r"Software\Microsoft\Windows\CurrentVersion\Run"
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_SET_VALUE) as key:
                 if enable:
-                    py_exe = sys.executable
-                    if self.silent_launch_var.get() and py_exe.lower().endswith("python.exe"):
-                        pyw = py_exe[:-10] + "pythonw.exe"
-                        if os.path.isfile(pyw):
-                            py_exe = pyw
+                    py_exe = self._get_python_executable()
                     winreg.SetValueEx(key, "FOXLAUNCHER_FLC", 0, winreg.REG_SZ, f'"{py_exe}" "{target_script}"')
                     self.log("[BAŞLANGIÇ] Windows açılışında otomatik başlatma aktif edildi.")
                 else:
@@ -506,7 +674,7 @@ class FoxSetupWizard:
         self.log(f"[AYARLAR] Tercihler kaydedildi: {config_path}")
 
     def _fetch_code_from_github(self):
-        headers = {"User-Agent": "FLC-SetupWizard/2.1"}
+        headers = {"User-Agent": "FLC-SetupWizard/2.2"}
         api_urls = [
             f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/commits/{TARGET_COMMIT}",
             f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/git/trees/main?recursive=1",
@@ -596,9 +764,9 @@ class FoxSetupWizard:
             launcher_code = self._fetch_code_from_github()
             self.log(f"[BAŞARILI] Kaynak kod indirildi ({len(launcher_code)} karakter).")
 
-            # AŞAMA 3: FoxLauncher.py Dosyasını Oluşturma
-            self.set_step("Adım 3/4: FoxLauncher.py oluşturuluyor...", 75)
-            self.log("\n=== ADIM 3: DOSYA OLUŞTURMA ===")
+            # AŞAMA 3: FoxLauncher.py ve Masaüstü Tilki İkonlu Kısayol Oluşturma
+            self.set_step("Adım 3/4: FoxLauncher.py ve masaüstü 'Fox Launcher' simgesi oluşturuluyor...", 75)
+            self.log("\n=== ADIM 3: KURULUM & MASAÜSTÜ SİMGESİ ===")
             target_dir = os.path.dirname(self.launcher_py_path)
             os.makedirs(target_dir, exist_ok=True)
 
@@ -606,12 +774,7 @@ class FoxSetupWizard:
                 f.write(launcher_code)
             self.log(f"[OLUŞTURULDU] {self.launcher_py_path}")
 
-            if self.create_bat_var.get():
-                bat_path = os.path.join(target_dir, "FoxLauncher_Baslat.bat")
-                py_cmd = "pythonw" if self.silent_launch_var.get() else "python"
-                with open(bat_path, "w", encoding="utf-8") as bf:
-                    bf.write(f'@echo off\nstart "" {py_cmd} "{self.launcher_py_path}"\n')
-                self.log(f"[OLUŞTURULDU] {bat_path}")
+            self._create_desktop_fox_shortcut()
 
             # AŞAMA 4: Bildirim, Güncelleme & Başlangıç Ayarlarını Uygulama
             self.set_step("Adım 4/4: Bildirim, güncelleme ve başlangıç ayarları uygulanıyor...", 90)
@@ -619,7 +782,7 @@ class FoxSetupWizard:
             self._write_user_preferences()
             self._configure_windows_startup(self.win_startup_var.get(), self.launcher_py_path)
 
-            self.set_step("Kurulum ve yapılandırma başarıyla tamamlandı!", 100)
+            self.set_step("Kurulum tamamlandı! Masaüstünde tilki logolu 'Fox Launcher' hazır.", 100)
             self.log("\n=== KURULUM TAMAMLANDI ===")
 
             self.root.after(0, lambda: (
@@ -644,11 +807,7 @@ class FoxSetupWizard:
         if not os.path.isfile(self.launcher_py_path):
             messagebox.showerror("Hata", "FoxLauncher.py dosyası bulunamadı.")
             return
-        python_exe = sys.executable
-        if self.silent_launch_var.get() and sys.platform == "win32" and python_exe.lower().endswith("python.exe"):
-            pythonw = python_exe[:-10] + "pythonw.exe"
-            if os.path.isfile(pythonw):
-                python_exe = pythonw
+        python_exe = self._get_python_executable()
         subprocess.Popen([python_exe, self.launcher_py_path], cwd=os.path.dirname(self.launcher_py_path))
         self.root.destroy()
 
